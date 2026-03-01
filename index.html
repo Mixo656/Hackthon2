@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a1628" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Shake to Breathe" />
+  <meta name="description" content="A mental health micro-intervention that detects agitation and guides you through calming breathing." />
+
+  <title>Shake to Breathe</title>
+  <link rel="manifest" href="manifest.json" />
+
+  <!-- Google Fonts: Inter for clean, modern look -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ─── Design Tokens ─────────────────────────────────────────────────────── */
+    :root {
+      --bg-idle:        #0a1628;
+      --bg-active:      #081220;
+      --accent-primary: #4fc3f7;   /* sky blue */
+      --accent-inhale:  #80deea;   /* teal for inhale */
+      --accent-hold:    #b39ddb;   /* soft purple for hold */
+      --accent-exhale:  #80cbc4;   /* minty green for exhale */
+      --text-primary:   #e0f7fa;
+      --text-secondary: #90caf9;
+      --text-muted:     #546e7a;
+      --circle-size:    min(60vw, 280px);
+      --font:           'Inter', system-ui, sans-serif;
+      --transition-fast: 0.4s ease;
+      --transition-slow: 8s ease-in-out;
+    }
+
+    /* ─── Reset & Base ──────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      width: 100%;
+      overflow: hidden;
+      font-family: var(--font);
+      background: var(--bg-idle);
+      color: var(--text-primary);
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100dvh; /* dynamic viewport height for mobile */
+      position: relative;
+    }
+
+    /* ─── Star / Particle Background ───────────────────────────────────────── */
+    #stars-canvas {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      opacity: 0.5;
+    }
+
+    /* ─── Screens ───────────────────────────────────────────────────────────── */
+    .screen {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      transition: opacity 0.8s ease, transform 0.8s ease;
+      z-index: 1;
+    }
+
+    .screen.hidden {
+      opacity: 0;
+      pointer-events: none;
+      transform: scale(0.96);
+    }
+
+    /* ─── Idle / Landing Screen ─────────────────────────────────────────────── */
+    #screen-idle {
+      gap: 2rem;
+      text-align: center;
+    }
+
+    #screen-idle .app-logo {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 40% 35%, #4fc3f7, #0d47a1);
+      box-shadow: 0 0 40px rgba(79, 195, 247, 0.4);
+      animation: pulse-idle 3s ease-in-out infinite;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2.2rem;
+    }
+
+    @keyframes pulse-idle {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 40px rgba(79,195,247,0.4); }
+      50%       { transform: scale(1.08); box-shadow: 0 0 60px rgba(79,195,247,0.6); }
+    }
+
+    #screen-idle h1 {
+      font-size: clamp(1.6rem, 5vw, 2.2rem);
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      background: linear-gradient(135deg, #e0f7fa, #4fc3f7);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    #screen-idle p {
+      font-size: clamp(0.95rem, 3vw, 1.1rem);
+      color: var(--text-secondary);
+      line-height: 1.7;
+      max-width: 320px;
+    }
+
+    /* Shake hint indicator */
+    .shake-hint {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.6rem;
+      margin-top: 0.5rem;
+    }
+
+    .shake-bars {
+      display: flex;
+      gap: 5px;
+      align-items: flex-end;
+      height: 32px;
+    }
+
+    .shake-bar {
+      width: 6px;
+      border-radius: 3px;
+      background: var(--accent-primary);
+      opacity: 0.7;
+      animation: shake-wave 1.2s ease-in-out infinite;
+    }
+
+    .shake-bar:nth-child(1) { height: 12px; animation-delay: 0s; }
+    .shake-bar:nth-child(2) { height: 22px; animation-delay: 0.15s; }
+    .shake-bar:nth-child(3) { height: 32px; animation-delay: 0.3s; }
+    .shake-bar:nth-child(4) { height: 22px; animation-delay: 0.45s; }
+    .shake-bar:nth-child(5) { height: 12px; animation-delay: 0.6s; }
+
+    @keyframes shake-wave {
+      0%, 100% { transform: scaleY(1); opacity: 0.5; }
+      50%       { transform: scaleY(1.4); opacity: 1; }
+    }
+
+    .shake-hint small {
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    /* Manual tap button (shown when sensors unavailable) */
+    #btn-tap {
+      display: none;
+      margin-top: 1.5rem;
+      padding: 0.9rem 2rem;
+      border: 1.5px solid var(--accent-primary);
+      border-radius: 50px;
+      background: transparent;
+      color: var(--accent-primary);
+      font-family: var(--font);
+      font-size: 1rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.3s, transform 0.2s;
+      letter-spacing: 0.02em;
+    }
+
+    #btn-tap:hover, #btn-tap:active {
+      background: rgba(79, 195, 247, 0.1);
+      transform: scale(1.04);
+    }
+
+    /* Permission banner */
+    #permission-banner {
+      display: none;
+      position: fixed;
+      bottom: 2rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(79, 195, 247, 0.15);
+      border: 1px solid rgba(79, 195, 247, 0.3);
+      backdrop-filter: blur(12px);
+      border-radius: 14px;
+      padding: 1rem 1.4rem;
+      max-width: 320px;
+      width: calc(100% - 3rem);
+      text-align: center;
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+      z-index: 10;
+      line-height: 1.5;
+    }
+
+    #btn-request-permission {
+      display: block;
+      margin: 0.7rem auto 0;
+      padding: 0.5rem 1.4rem;
+      border: 1px solid var(--accent-primary);
+      border-radius: 50px;
+      background: transparent;
+      color: var(--accent-primary);
+      font-family: var(--font);
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    #btn-request-permission:hover {
+      background: rgba(79, 195, 247, 0.15);
+    }
+
+    /* ─── Breathing / Active Screen ─────────────────────────────────────────── */
+    #screen-breathing {
+      gap: 2.5rem;
+    }
+
+    #breathing-label {
+      font-size: clamp(1rem, 4vw, 1.3rem);
+      font-weight: 300;
+      color: var(--text-secondary);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      height: 1.6em;
+      transition: color 0.8s ease;
+    }
+
+    /* Breathing circle container */
+    .circle-wrapper {
+      position: relative;
+      width: var(--circle-size);
+      height: var(--circle-size);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Outer glow ring */
+    .circle-glow {
+      position: absolute;
+      inset: -20px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(79,195,247,0.15) 0%, transparent 70%);
+      animation: none;
+      transition: transform 4s ease-in-out, opacity 1s ease;
+    }
+
+    /* The main breathing circle */
+    #breath-circle {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: radial-gradient(circle at 40% 35%,
+        var(--accent-inhale) 0%,
+        #0d47a1 60%,
+        var(--bg-active) 100%
+      );
+      box-shadow:
+        0 0 60px rgba(79, 195, 247, 0.3),
+        inset 0 0 30px rgba(255,255,255,0.05);
+      transform: scale(0.5);
+      transition: transform 4s ease-in-out, background 1s ease, box-shadow 1s ease;
+      will-change: transform;
+    }
+
+    /* Phase classes applied by JS */
+    #breath-circle.inhale {
+      transform: scale(1);
+      transition: transform 4s ease-in-out;
+    }
+
+    #breath-circle.hold {
+      transform: scale(1);
+      transition: transform 0.3s ease;
+    }
+
+    #breath-circle.exhale {
+      transform: scale(0.5);
+      transition: transform 8s ease-in-out;
+    }
+
+    /* Cycle counter display inside circle */
+    #cycle-display {
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      pointer-events: none;
+    }
+
+    #cycle-display .count-num {
+      font-size: clamp(1.8rem, 6vw, 2.5rem);
+      font-weight: 600;
+      color: rgba(255,255,255,0.9);
+      line-height: 1;
+    }
+
+    #cycle-display .count-label {
+      font-size: 0.7rem;
+      font-weight: 400;
+      color: rgba(255,255,255,0.5);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-top: 2px;
+    }
+
+    /* Timer arc — SVG ring showing phase duration */
+    #timer-svg {
+      position: absolute;
+      inset: -12px;
+      width: calc(100% + 24px);
+      height: calc(100% + 24px);
+      transform: rotate(-90deg);
+      pointer-events: none;
+    }
+
+    #timer-track {
+      fill: none;
+      stroke: rgba(255,255,255,0.06);
+      stroke-width: 4;
+    }
+
+    #timer-progress {
+      fill: none;
+      stroke: var(--accent-primary);
+      stroke-width: 4;
+      stroke-linecap: round;
+      stroke-dasharray: 0 1000;
+      transition: stroke 0.8s ease;
+    }
+
+    /* Cycle dots */
+    .cycle-dots {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      border: 1.5px solid rgba(79, 195, 247, 0.4);
+      background: transparent;
+      transition: background 0.5s ease, border-color 0.5s ease, transform 0.3s ease;
+    }
+
+    .dot.active {
+      background: var(--accent-primary);
+      border-color: var(--accent-primary);
+      transform: scale(1.3);
+    }
+
+    .dot.done {
+      background: rgba(79, 195, 247, 0.3);
+      border-color: rgba(79, 195, 247, 0.4);
+    }
+
+    /* ─── End / Completion Screen ───────────────────────────────────────────── */
+    #screen-end {
+      gap: 1.5rem;
+      text-align: center;
+    }
+
+    #screen-end .end-emoji {
+      font-size: 4rem;
+      animation: pop-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    }
+
+    @keyframes pop-in {
+      from { transform: scale(0); opacity: 0; }
+      to   { transform: scale(1); opacity: 1; }
+    }
+
+    #screen-end h2 {
+      font-size: clamp(1.5rem, 5vw, 2rem);
+      font-weight: 600;
+      background: linear-gradient(135deg, #e0f7fa, #80deea);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    #screen-end p {
+      color: var(--text-secondary);
+      font-size: 1rem;
+      line-height: 1.7;
+      max-width: 300px;
+    }
+
+    #btn-restart {
+      margin-top: 1rem;
+      padding: 0.85rem 2rem;
+      border: 1.5px solid var(--accent-primary);
+      border-radius: 50px;
+      background: transparent;
+      color: var(--accent-primary);
+      font-family: var(--font);
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background 0.3s, transform 0.2s;
+    }
+
+    #btn-restart:hover { background: rgba(79,195,247,0.1); transform: scale(1.04); }
+
+    /* ─── Shake Flash Overlay ───────────────────────────────────────────────── */
+    #shake-flash {
+      position: fixed;
+      inset: 0;
+      background: rgba(79, 195, 247, 0.08);
+      pointer-events: none;
+      z-index: 20;
+      opacity: 0;
+      transition: opacity 0.15s ease;
+    }
+
+    #shake-flash.visible { opacity: 1; }
+
+    /* ─── Accessibility ─────────────────────────────────────────────────────── */
+    .sr-only {
+      position: absolute;
+      width: 1px; height: 1px;
+      padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0,0,0,0);
+      border: 0;
+    }
+
+    /* ─── Install Banner ────────────────────────────────────────────────────── */
+    #install-bar {
+      display: none;
+      position: fixed;
+      top: env(safe-area-inset-top, 0);
+      left: 0; right: 0;
+      padding: 0.75rem 1.2rem;
+      background: rgba(13, 71, 161, 0.8);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(79,195,247,0.2);
+      z-index: 30;
+      text-align: center;
+      font-size: 0.85rem;
+      color: var(--text-primary);
+    }
+
+    #install-bar button {
+      margin-left: 0.8rem;
+      padding: 0.3rem 0.9rem;
+      border: 1px solid var(--accent-primary);
+      border-radius: 20px;
+      background: transparent;
+      color: var(--accent-primary);
+      font-family: var(--font);
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Accessible live region for screen readers -->
+  <div aria-live="polite" aria-atomic="true" class="sr-only" id="sr-announcer"></div>
+
+  <!-- Particle canvas background -->
+  <canvas id="stars-canvas" aria-hidden="true"></canvas>
+
+  <!-- Shake flash effect -->
+  <div id="shake-flash" aria-hidden="true"></div>
+
+  <!-- ── Install prompt ──────────────────────────────────────────────── -->
+  <div id="install-bar" role="banner">
+    📲 Add to Home Screen for the best experience
+    <button id="btn-install" aria-label="Install app">Install</button>
+    <button id="btn-install-dismiss" aria-label="Dismiss install prompt">✕</button>
+  </div>
+
+  <!-- ── Screen 1: Idle / Landing ──────────────────────────────────── -->
+  <section id="screen-idle" class="screen" role="main" aria-label="Shake to Breathe landing screen">
+    <div class="app-logo" aria-hidden="true">🫁</div>
+    <h1>Shake to Breathe</h1>
+    <p>Feeling overwhelmed? Give your phone a shake and we'll guide you through a calming breath session.</p>
+
+    <div class="shake-hint" aria-hidden="true">
+      <div class="shake-bars">
+        <div class="shake-bar"></div>
+        <div class="shake-bar"></div>
+        <div class="shake-bar"></div>
+        <div class="shake-bar"></div>
+        <div class="shake-bar"></div>
+      </div>
+      <small>Shake your phone</small>
+    </div>
+
+    <!-- Fallback if sensors unavailable -->
+    <button id="btn-tap" aria-label="Tap to start breathing exercise">
+      Tap to Start
+    </button>
+
+    <!-- Permission prompt for iOS 13+ -->
+    <div id="permission-banner" role="alert" aria-live="assertive">
+      Motion sensors require your permission to detect shakes.
+      <button id="btn-request-permission" aria-label="Allow motion sensor access">Allow Motion Access</button>
+    </div>
+  </section>
+
+  <!-- ── Screen 2: Active Breathing ───────────────────────────────── -->
+  <section id="screen-breathing" class="screen hidden" role="main" aria-label="Breathing exercise">
+    <!-- Phase label -->
+    <div id="breathing-label" aria-live="polite" aria-atomic="true">Inhale…</div>
+
+    <!-- The animated circle -->
+    <div class="circle-wrapper" role="img" aria-label="Breathing circle animation">
+      <div class="circle-glow" aria-hidden="true"></div>
+
+      <!-- SVG timer ring -->
+      <svg id="timer-svg" aria-hidden="true" viewBox="0 0 120 120">
+        <circle id="timer-track" cx="60" cy="60" r="56" />
+        <circle id="timer-progress" cx="60" cy="60" r="56" />
+      </svg>
+
+      <!-- Main breathing circle -->
+      <div id="breath-circle" aria-hidden="true"></div>
+
+      <!-- Cycle number display -->
+      <div id="cycle-display" aria-hidden="true">
+        <span class="count-num" id="cycle-num">1</span>
+        <span class="count-label">of 3</span>
+      </div>
+    </div>
+
+    <!-- Cycle progress dots -->
+    <div class="cycle-dots" role="progressbar" aria-valuenow="1" aria-valuemin="1" aria-valuemax="3" aria-label="Cycle progress">
+      <div class="dot active" id="dot-1" aria-hidden="true"></div>
+      <div class="dot"        id="dot-2" aria-hidden="true"></div>
+      <div class="dot"        id="dot-3" aria-hidden="true"></div>
+    </div>
+  </section>
+
+  <!-- ── Screen 3: End / Complete ─────────────────────────────────── -->
+  <section id="screen-end" class="screen hidden" role="main" aria-label="Session complete">
+    <div class="end-emoji" aria-hidden="true">🌿</div>
+    <h2>Feel better?</h2>
+    <p>You completed 3 calming breath cycles. Take a moment to notice how you feel right now.</p>
+    <button id="btn-restart" aria-label="Start another breathing session">
+      Do it again
+    </button>
+  </section>
+
+  <script>
+    /**
+     * ╔══════════════════════════════════════════════════════════╗
+     *  SHAKE TO BREATHE — Main Application Script
+     *  4-7-8 Breathing: Inhale 4s → Hold 7s → Exhale 8s
+     *  3 cycles ≈ 57 seconds
+     * ╚══════════════════════════════════════════════════════════╝
+     */
+
+    'use strict';
+
+    // ─── DOM References ──────────────────────────────────────────────────────
+    const screens       = {
+      idle:      document.getElementById('screen-idle'),
+      breathing: document.getElementById('screen-breathing'),
+      end:       document.getElementById('screen-end'),
+    };
+    const breathCircle   = document.getElementById('breath-circle');
+    const breathLabel    = document.getElementById('breathing-label');
+    const cycleNumEl     = document.getElementById('cycle-num');
+    const dots           = [1,2,3].map(i => document.getElementById(`dot-${i}`));
+    const timerProgress  = document.getElementById('timer-progress');
+    const srAnnouncer    = document.getElementById('sr-announcer');
+    const shakeFlash     = document.getElementById('shake-flash');
+    const btnTap         = document.getElementById('btn-tap');
+    const btnRestart     = document.getElementById('btn-restart');
+    const permissionBanner     = document.getElementById('permission-banner');
+    const btnRequestPermission = document.getElementById('btn-request-permission');
+    const installBar     = document.getElementById('install-bar');
+    const btnInstall     = document.getElementById('btn-install');
+    const btnInstallDismiss    = document.getElementById('btn-install-dismiss');
+
+    // ─── Configuration ───────────────────────────────────────────────────────
+    const CONFIG = {
+      shakeThreshold: 15,       // g-force magnitude to count as a shake hit
+      shakeWindow:    1000,     // ms window to accumulate hits
+      shakeHits:      3,        // hits needed within window to trigger
+      totalCycles:    3,
+      phases: [
+        { name: 'Inhale',  class: 'inhale', duration: 4000,  color: '#80deea' },
+        { name: 'Hold',    class: 'hold',   duration: 7000,  color: '#b39ddb' },
+        { name: 'Exhale',  class: 'exhale', duration: 8000,  color: '#80cbc4' },
+      ],
+      haptic: {
+        inhale: [80, 60, 80],             // Short pulses — feel the breath coming in
+        hold:   [200],                    // Single medium buzz — stillness
+        exhale: [0, 50, 400],             // Long release buzz
+      },
+    };
+
+    // ─── State ───────────────────────────────────────────────────────────────
+    let state = {
+      isActive:      false,
+      currentCycle:  0,
+      currentPhase:  0,
+      phaseTimer:    null,
+      arcTimer:      null,
+      motionEnabled: false,
+      shakeHits:     [],        // timestamps of recent shake hits
+    };
+
+    // ─── SVG Timer Arc Setup ─────────────────────────────────────────────────
+    const SVG_R = 56;
+    const SVG_CIRCUMFERENCE = 2 * Math.PI * SVG_R;
+    timerProgress.style.strokeDasharray = `0 ${SVG_CIRCUMFERENCE}`;
+
+    // ─── Utility: announce to screen readers ─────────────────────────────────
+    function announce(msg) {
+      srAnnouncer.textContent = '';
+      requestAnimationFrame(() => { srAnnouncer.textContent = msg; });
+    }
+
+    // ─── Utility: vibrate safely ──────────────────────────────────────────────
+    function vibrate(pattern) {
+      if ('vibrate' in navigator) {
+        try { navigator.vibrate(pattern); } catch (_) {}
+      }
+    }
+
+    // ─── Utility: show/hide screens ──────────────────────────────────────────
+    function showScreen(name) {
+      Object.entries(screens).forEach(([key, el]) => {
+        el.classList.toggle('hidden', key !== name);
+      });
+    }
+
+    // ─── Particle / Stars Background ─────────────────────────────────────────
+    (function initStars() {
+      const canvas = document.getElementById('stars-canvas');
+      const ctx    = canvas.getContext('2d');
+      let stars    = [];
+      let animId;
+
+      function resize() {
+        canvas.width  = window.innerWidth;
+        canvas.height = window.innerHeight;
+        buildStars();
+      }
+
+      function buildStars() {
+        stars = Array.from({ length: 80 }, () => ({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          r: Math.random() * 1.5 + 0.3,
+          opacity: Math.random() * 0.6 + 0.1,
+          speed:   Math.random() * 0.003 + 0.001,
+          phase:   Math.random() * Math.PI * 2,
+        }));
+      }
+
+      function draw(t) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        stars.forEach(s => {
+          const a = s.opacity * (0.5 + 0.5 * Math.sin(t * s.speed + s.phase));
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(144,202,249,${a})`;
+          ctx.fill();
+        });
+        animId = requestAnimationFrame(draw);
+      }
+
+      window.addEventListener('resize', resize);
+      resize();
+      animId = requestAnimationFrame(draw);
+    })();
+
+    // ─── Breathing Session ───────────────────────────────────────────────────
+
+    function startSession() {
+      if (state.isActive) return;
+      state.isActive     = true;
+      state.currentCycle = 0;
+      state.currentPhase = 0;
+
+      // Reset dots
+      dots.forEach(d => { d.className = 'dot'; });
+
+      showScreen('breathing');
+      runPhase();
+    }
+
+    function runPhase() {
+      const phase   = CONFIG.phases[state.currentPhase];
+      const cycle   = state.currentCycle;
+
+      // ── Update label
+      breathLabel.textContent = phase.name + (state.currentPhase === 0 ? '…' : state.currentPhase === 1 ? ' & hold…' : '…');
+      breathLabel.style.color = phase.color;
+
+      // ── Update circle style
+      breathCircle.className = phase.class;
+      breathCircle.style.boxShadow = `0 0 60px ${phase.color}55, inset 0 0 30px rgba(255,255,255,0.05)`;
+
+      // ── Update cycle counter
+      cycleNumEl.textContent = cycle + 1;
+      updateDots(cycle);
+
+      // ── Announce to screen readers
+      announce(`${phase.name}, ${phase.duration / 1000} seconds`);
+
+      // ── Haptic feedback
+      vibrate(CONFIG.haptic[phase.class] || []);
+
+      // ── Arc animation
+      animateArc(phase.duration, phase.color);
+
+      // ── Schedule move to next phase
+      state.phaseTimer = setTimeout(() => {
+        state.currentPhase++;
+
+        // Finished all phases → next cycle or end
+        if (state.currentPhase >= CONFIG.phases.length) {
+          state.currentPhase = 0;
+          state.currentCycle++;
+
+          if (state.currentCycle >= CONFIG.totalCycles) {
+            endSession();
+            return;
+          }
+        }
+        runPhase();
+      }, phase.duration);
+    }
+
+    function animateArc(duration, color) {
+      // Clear any existing arc animation
+      clearInterval(state.arcTimer);
+
+      const startTime = performance.now();
+      timerProgress.style.stroke = color;
+
+      function tick(now) {
+        const elapsed  = now - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const dash     = progress * SVG_CIRCUMFERENCE;
+        timerProgress.style.strokeDasharray = `${dash} ${SVG_CIRCUMFERENCE}`;
+
+        if (progress < 1) {
+          state.arcTimer = requestAnimationFrame(tick);
+        }
+      }
+
+      state.arcTimer = requestAnimationFrame(tick);
+    }
+
+    function updateDots(cycle) {
+      dots.forEach((dot, i) => {
+        if (i < cycle)       { dot.className = 'dot done'; }
+        else if (i === cycle) { dot.className = 'dot active'; }
+        else                  { dot.className = 'dot'; }
+      });
+
+      // Update ARIA progressbar
+      const progressbar = document.querySelector('[role="progressbar"]');
+      if (progressbar) progressbar.setAttribute('aria-valuenow', cycle + 1);
+    }
+
+    function endSession() {
+      clearTimeout(state.phaseTimer);
+      cancelAnimationFrame(state.arcTimer);
+      state.isActive = false;
+
+      vibrate([100, 80, 100, 80, 200]); // Completion pattern
+      announce('Session complete. Feel better?');
+
+      // Brief pause, then show end screen
+      setTimeout(() => showScreen('end'), 600);
+    }
+
+    function resetToIdle() {
+      clearTimeout(state.phaseTimer);
+      cancelAnimationFrame(state.arcTimer);
+      state.isActive     = false;
+      state.currentCycle = 0;
+      state.currentPhase = 0;
+      timerProgress.style.strokeDasharray = `0 ${SVG_CIRCUMFERENCE}`;
+      breathCircle.className = '';
+      showScreen('idle');
+    }
+
+    // ─── Shake Detection ─────────────────────────────────────────────────────
+
+    /**
+     * Throttled DeviceMotion handler.
+     * Calculates ΔG magnitude from accelerationIncludingGravity.
+     * Triggers when threshold is exceeded CONFIG.shakeHits times within shakeWindow ms.
+     */
+    let lastShakeCheck = 0;
+    let prevAcc = { x: 0, y: 0, z: 0 };
+
+    function handleMotion(event) {
+      const now = Date.now();
+      // Throttle to ~60fps
+      if (now - lastShakeCheck < 16) return;
+      lastShakeCheck = now;
+
+      const acc = event.accelerationIncludingGravity;
+      if (!acc) return;
+
+      const x = acc.x || 0;
+      const y = acc.y || 0;
+      const z = acc.z || 0;
+
+      // Delta magnitude change to filter out gravity
+      const dx = x - prevAcc.x;
+      const dy = y - prevAcc.y;
+      const dz = z - prevAcc.z;
+      const magnitude = Math.sqrt(dx*dx + dy*dy + dz*dz);
+
+      prevAcc = { x, y, z };
+
+      if (magnitude > CONFIG.shakeThreshold) {
+        registerShakeHit(now);
+      }
+    }
+
+    function registerShakeHit(now) {
+      // Remove hits outside the time window
+      state.shakeHits = state.shakeHits.filter(t => (now - t) < CONFIG.shakeWindow);
+      state.shakeHits.push(now);
+
+      // Flash UI feedback
+      shakeFlash.classList.add('visible');
+      setTimeout(() => shakeFlash.classList.remove('visible'), 150);
+
+      // Trigger if threshold met
+      if (state.shakeHits.length >= CONFIG.shakeHits) {
+        state.shakeHits = [];
+        if (!state.isActive) {
+          startSession();
+        }
+      }
+    }
+
+    // ─── Motion Permission Handling ───────────────────────────────────────────
+
+    function enableMotionListening() {
+      window.addEventListener('devicemotion', handleMotion, { passive: true });
+      state.motionEnabled = true;
+      permissionBanner.style.display = 'none';
+      btnTap.style.display           = 'none';
+    }
+
+    function checkMotionSupport() {
+      if (!window.DeviceMotionEvent) {
+        // Sensors not available → show tap fallback
+        showTapFallback();
+        return;
+      }
+
+      // iOS 13+ requires explicit permission
+      if (typeof DeviceMotionEvent.requestPermission === 'function') {
+        permissionBanner.style.display = 'block';
+      } else {
+        // Android / older iOS — just listen
+        enableMotionListening();
+      }
+    }
+
+    function showTapFallback() {
+      btnTap.style.display = 'inline-block';
+      // Hide the shake hint since sensors aren't available
+      const hint = document.querySelector('.shake-hint');
+      if (hint) hint.style.display = 'none';
+
+      document.querySelector('#screen-idle p').textContent =
+        'Motion sensors unavailable. Tap the button below to start your calming breath session.';
+    }
+
+    // iOS permission button
+    btnRequestPermission.addEventListener('click', () => {
+      DeviceMotionEvent.requestPermission()
+        .then(response => {
+          if (response === 'granted') {
+            enableMotionListening();
+          } else {
+            // Permission denied — fall back to tap
+            permissionBanner.style.display = 'none';
+            showTapFallback();
+          }
+        })
+        .catch(() => {
+          permissionBanner.style.display = 'none';
+          showTapFallback();
+        });
+    });
+
+    // ─── UI Event Listeners ──────────────────────────────────────────────────
+
+    // Tap fallback
+    btnTap.addEventListener('click', () => {
+      if (!state.isActive) startSession();
+    });
+
+    // Restart from end screen
+    btnRestart.addEventListener('click', () => {
+      resetToIdle();
+    });
+
+    // ─── PWA Install Prompt ──────────────────────────────────────────────────
+    let deferredInstallPrompt = null;
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredInstallPrompt = e;
+      installBar.style.display = 'block';
+    });
+
+    btnInstall.addEventListener('click', () => {
+      if (deferredInstallPrompt) {
+        deferredInstallPrompt.prompt();
+        deferredInstallPrompt.userChoice.then(() => {
+          deferredInstallPrompt = null;
+          installBar.style.display = 'none';
+        });
+      }
+    });
+
+    btnInstallDismiss.addEventListener('click', () => {
+      installBar.style.display = 'none';
+    });
+
+    // ─── Service Worker Registration ─────────────────────────────────────────
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+          .then(reg => console.log('[SW] Registered, scope:', reg.scope))
+          .catch(err => console.warn('[SW] Registration failed:', err));
+      });
+    }
+
+    // ─── Boot ────────────────────────────────────────────────────────────────
+    checkMotionSupport();
+    showScreen('idle');
+  </script>
+</body>
+</html>
