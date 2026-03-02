@@ -75,7 +75,7 @@ A modern web application designed to help users monitor and manage stress levels
 1. Clone the repository:
 ```bash
 https://github.com/Mixo656/Hackthon2.git
-cd smart-calm-ai
+cd smart-ai
 ```
 
 2. Install dependencies:
